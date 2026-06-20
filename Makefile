@@ -26,7 +26,7 @@ ifeq ($(OS),Windows_NT)
     HOST       := windows
     DEFAULT_PORT := COM6
     # Prefer `pio`; fall back to `platformio` if that is what is on PATH.
-    PIO        := pio
+    PIO        := $(shell where pio >NUL 2>NUL && echo pio || echo platformio)
 else
     HOST       := $(shell uname -s)
     DEFAULT_PORT := /dev/ttyUSB0
@@ -40,7 +40,7 @@ PORT ?= $(DEFAULT_PORT)
 
 ENV := esp32dev
 
-.PHONY: all build upload monitor flash clean env help
+.PHONY: all build upload monitor flash clean env help test-list
 
 all: build
 
@@ -72,5 +72,34 @@ env:
 
 ## help    — list targets
 help:
-	@echo "Targets: build upload monitor flash clean env"
+	@echo "Targets: build upload monitor flash clean env test-NAME test-list"
 	@echo "Override the port with: make upload PORT=<port>"
+	@echo "Test ONE component:     make test-relay   (see COMPONENT TESTS)"
+
+# =====================================================================
+#  COMPONENT TESTS
+# =====================================================================
+#  Flash a firmware that runs ONLY one component in isolation — no
+#  Wi-Fi, no web server, no other gates. `make test-relay` builds the
+#  `relay` PlatformIO env (which sets -DTEST_relay), uploads it, then
+#  opens the serial monitor so you can watch that component.
+#
+#  Each name below is a PlatformIO env in platformio.ini whose test
+#  code lives under `#if defined(TEST_<name>)` in src/main.cpp.
+#
+#  TO ADD A TEST:
+#    1. add the name to TESTS below
+#    2. add an [env:<name>] block in platformio.ini  (build_flags = -DTEST_<name>)
+#    3. add a `#elif defined(TEST_<name>)` block in src/main.cpp
+#  ...then run:  make test-<name>
+# ---------------------------------------------------------------------
+TESTS := relay
+
+## test-NAME   — flash ONLY component NAME's test firmware, then monitor
+test-%:
+	$(PIO) run -e $* -t upload --upload-port $(PORT)
+	$(PIO) device monitor -p $(PORT) -b 115200
+
+## test-list   — list the component tests you can run
+test-list:
+	@echo "Component tests (run 'make test-NAME'): $(TESTS)"
