@@ -7,6 +7,9 @@
 //  "Hold" just means leave the relay where it is — with a maintained
 //  relay there are only these two positions.
 //
+//  An opened barrier auto-closes after AUTO_CLOSE_MS (set AUTO_CLOSE_ENABLED
+//  = false to disable).
+//
 //  Control surfaces (full build):
 //    - Wi-Fi web dashboard  (SoftAP "BoomBarrierTest", http://192.168.4.1)
 //    - serial monitor: o1/c1 = barrier 1 open/close, o2/c2 = barrier 2,
@@ -45,14 +48,21 @@ static const bool RELAY_ACTIVE_LOW = true;         // true = IN LOW energizes th
 static inline int activeLevel() { return RELAY_ACTIVE_LOW ? LOW  : HIGH; }
 static inline int idleLevel()   { return RELAY_ACTIVE_LOW ? HIGH : LOW;  }
 
+// ── Auto-close ───────────────────────────────────────
+// When a barrier is opened it closes itself after AUTO_CLOSE_MS.
+static const bool     AUTO_CLOSE_ENABLED = true;
+static const uint32_t AUTO_CLOSE_MS      = 5000;   // hold open 5 s, then close
+
 // ── Barrier state ────────────────────────────────────
 // Index 0 = barrier 1, index 1 = barrier 2.
-bool barrierOpen[2] = { false, false };   // false = CLOSED, true = OPEN
+bool     barrierOpen[2]    = { false, false };   // false = CLOSED, true = OPEN
+uint32_t barrierCloseAt[2] = { 0, 0 };           // millis() deadline to auto-close
 
 // Drive one barrier. `i` is the 0-based relay index.
 static void setBarrier(int i, bool open) {
   digitalWrite(RELAY_PIN[i], open ? activeLevel() : idleLevel());
   barrierOpen[i] = open;
+  if (open) barrierCloseAt[i] = millis() + AUTO_CLOSE_MS;   // arm auto-close
   Serial.printf("[BARRIER %d] %s\n", i + 1, open ? "OPEN" : "CLOSED");
 }
 
@@ -152,6 +162,18 @@ static void handleCmd() {
   }
 }
 
+// Close any barrier whose auto-close deadline has passed. Call every loop().
+static void tickAutoClose() {
+  if (!AUTO_CLOSE_ENABLED) return;
+  uint32_t now = millis();
+  for (int i = 0; i < 2; i++) {
+    if (barrierOpen[i] && (int32_t)(now - barrierCloseAt[i]) >= 0) {
+      Serial.printf("[BARRIER %d] auto-close\n", i + 1);
+      setBarrier(i, false);
+    }
+  }
+}
+
 static void startWebServer() {
   server.on("/",       HTTP_GET, handleRoot);
   server.on("/status", HTTP_GET, handleStatus);
@@ -218,5 +240,6 @@ void loop() {
 #else
   server.handleClient();
   handleSerial();
+  tickAutoClose();
 #endif
 }
