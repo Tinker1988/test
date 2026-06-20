@@ -93,13 +93,4 @@ help:
 #    3. add a `#elif defined(TEST_<name>)` block in src/main.cpp
 #  ...then run:  make test-<name>
 # ---------------------------------------------------------------------
-TESTS := relay
 
-## test-NAME   — flash ONLY component NAME's test firmware, then monitor
-test-%:
-	$(PIO) run -e $* -t upload --upload-port $(PORT)
-	$(PIO) device monitor -p $(PORT) -b 115200
-
-## test-list   — list the component tests you can run
-test-list:
-	@echo "Component tests (run 'make test-NAME'): $(TESTS)"
